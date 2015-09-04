@@ -1,0 +1,12 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+
+Name: @PACKAGE_NAME@
+Description: Universal JTAG library, server and tools
+Version: @PACKAGE_VERSION@
+URL: @PACKAGE_BUGREPORT@
+Libs: -L${libdir} -lurjtag
+Libs.private: @LIBS@ @LIBFTDI_LIBS@ @FTD2XXLIB@ @LIBUSB_LIBS@ @LTLIBINTL@
+Cflags: -I${includedir}

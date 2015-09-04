@@ -1,0 +1,1016 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<HTML
+><HEAD
+><TITLE
+>Drivers</TITLE
+><META
+NAME="GENERATOR"
+CONTENT="Modular DocBook HTML Stylesheet Version 1.79"><LINK
+REL="HOME"
+TITLE="Universal JTAG library, server and tools"
+HREF="index.html"><LINK
+REL="UP"
+TITLE="Internals"
+HREF="_internals.html"><LINK
+REL="PREVIOUS"
+TITLE="Internals"
+HREF="_internals.html"><LINK
+REL="NEXT"
+TITLE="Data file format"
+HREF="_data_file_format.html"><LINK
+REL="STYLESHEET"
+TYPE="text/css"
+HREF="UrJTAG.css"></HEAD
+><BODY
+CLASS="section"
+BGCOLOR="#FFFFFF"
+TEXT="#000000"
+LINK="#0000FF"
+VLINK="#840084"
+ALINK="#0000FF"
+><DIV
+CLASS="NAVHEADER"
+><TABLE
+SUMMARY="Header navigation table"
+WIDTH="100%"
+BORDER="0"
+CELLPADDING="0"
+CELLSPACING="0"
+><TR
+><TH
+COLSPAN="3"
+ALIGN="center"
+>Universal JTAG library, server and tools</TH
+></TR
+><TR
+><TD
+WIDTH="10%"
+ALIGN="left"
+VALIGN="bottom"
+><A
+HREF="_internals.html"
+ACCESSKEY="P"
+>Prev</A
+></TD
+><TD
+WIDTH="80%"
+ALIGN="center"
+VALIGN="bottom"
+>Chapter 4. Internals</TD
+><TD
+WIDTH="10%"
+ALIGN="right"
+VALIGN="bottom"
+><A
+HREF="_data_file_format.html"
+ACCESSKEY="N"
+>Next</A
+></TD
+></TR
+></TABLE
+><HR
+ALIGN="LEFT"
+WIDTH="100%"></DIV
+><DIV
+CLASS="section"
+><H1
+CLASS="section"
+><A
+NAME="_drivers"
+>4.2. Drivers</A
+></H1
+><P
+></P
+><UL
+><LI
+><P
+>&#13;Cable drivers
+</P
+></LI
+><LI
+><P
+>&#13;Link drivers
+</P
+></LI
+><LI
+><P
+>&#13;TAP drivers
+</P
+></LI
+><LI
+><P
+>&#13;Chain drivers
+</P
+></LI
+><LI
+><P
+>&#13;Bus drivers
+</P
+></LI
+><LI
+><P
+>&#13;Flash drivers
+</P
+></LI
+><LI
+><P
+>&#13;Commands
+</P
+></LI
+></UL
+><DIV
+CLASS="section"
+><H2
+CLASS="section"
+><A
+NAME="_cable_specific_drivers_src_tap_cable"
+>4.2.1. Cable-specific drivers (src/tap/cable)</A
+></H2
+><P
+>Cable-specific drivers are those which are visible to the user through
+the "jtag" command shell. They're listed in response to the "help cable"
+command. Each driver has to provide the following functions:</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;connect(), init() - Initialization
+</P
+></LI
+><LI
+><P
+>&#13;done(), cable_free(), disconnect() - Cleaning up
+</P
+></LI
+><LI
+><P
+>&#13;set_frequency() - set bitrate for shifting data through the chain
+</P
+></LI
+><LI
+><P
+>&#13;clock(), get_tdo(), transfer() - immediate JTAG activities
+</P
+></LI
+><LI
+><P
+>&#13;flush() - internally used to actually perform JTAG activities
+</P
+></LI
+><LI
+><P
+>&#13;help() - a help text to be displayed by the jtag command shell
+</P
+></LI
+></UL
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_initialization"
+>4.2.1.1. Initialization</A
+></H3
+><P
+>After allocating a "cable_t" structure, a pointer to it and further
+parameters (as strings) have to be passed first  to the selected cable's
+connect() function.</P
+><P
+>Following that, the init() function is called via cable_init(). If cable_init()
+returns a zero value, all is fine and the cable is ready for use.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_cleaning_up"
+>4.2.1.2. Cleaning up</A
+></H3
+><P
+>There are two functions for actual cleanup:</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;done() is responsible for driving the hardware to a safe and consistent state.
+</P
+></LI
+><LI
+><P
+>&#13;cable_free() then can be used to clean up eventually extra allocated memory etc.
+</P
+></LI
+></UL
+><P
+>Both are usually called from chain_disconnect().</P
+><P
+>An additional mechanism allows to clean up if a disconnection was detected by
+the low level driver (e.g. USB or parallel port driver). A cable has to provide
+a disconnect() function for this purpose:</P
+><P
+></P
+><OL
+TYPE="1"
+><LI
+><P
+>&#13;Low level (e.g. parport) driver calls cable driver-&#62;disconnect()
+</P
+></LI
+><LI
+><P
+>&#13;cable driver-&#62;disconnect() calls chain_disconnect()
+</P
+></LI
+><LI
+><P
+>&#13;chain_disconnect() calls cable driver-&#62;done()
+</P
+></LI
+><LI
+><P
+>&#13;chain_disconnect() then calls cable driver-&#62;cable_free()
+</P
+></LI
+></OL
+><P
+>After return from chain_disconnect() to cable driver-&#62;disconnect(), the cable_t
+structure has been freed and must not be accessed anymore.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_jtag_activities"
+>4.2.1.3. JTAG Activities</A
+></H3
+><P
+>Currently the API provides five different functions for performing operations
+at the JTAG interface on the low level signal level (using the four signals
+TMS, TCK, TDI, and TDO).</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;clock(tms,tdi,n) takes values for TMS and TDI output as its parameters, ensures that actual cable signals are set accordingly, and does a 0-1 transition on TCK (n times)
+</P
+></LI
+><LI
+><P
+>&#13;get_tdo() returns the current value at the TDO input.
+</P
+></LI
+><LI
+><P
+>&#13;set_trst(x) sets the TRST signal and returns the current value.
+</P
+></LI
+><LI
+><P
+>&#13;get_trst() returns the current value of the TRST signal.
+</P
+></LI
+></UL
+><P
+>For many JTAG adapters, there's almost no delay when doing alternating clock()
+and get_tdo(). Writing and reading happens immediately and the result is
+available immediately as well. This is the case with most parallel port
+adapters (but not when attached to USB-to-parallel adapters or USB docking
+stations) and memory mapped IO (e.g. general purpose I/O pins of
+microcontrollers).</P
+><P
+>But there are adapters, especially USB and Ethernet based adapters, which
+exhibit a rather long delay between the initiation of reading a bit and the
+delivery of the value of the bit. It is at least 1 millisecond with USB,
+which would limit the transfer rate to 1 kHz.  One way to workaround this
+is to transmit bits compacted into bytes and chunks of bytes, which is
+possible with the transfer() function.</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;transfer(in, out)
+</P
+></LI
+></UL
+><P
+>The transfer() function does a series of TCK pulses, with data for TDI read as
+bytes from memory. The bytes are automatically serialized. TMS is set to zero
+during transfer()s. Optionally, prior to each bit shifted out to the interface,
+TDO input can be read into memory (deserialized into a byte array of the same
+size as the input array).</P
+><P
+>It still doesn't yield much improvement if the operation consists of many read
+and write transitions (e.g. repeatedly writing an instruction and some data
+register values, then reading from the data register, as it is necessary for
+memory access). For that reason, the above functions are also available in
+variants that don't cause immediate activity, but rather schedule it for later.
+In the API, they're visible as</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;cable_defer_clock()
+</P
+></LI
+><LI
+><P
+>&#13;cable_defer_get_tdo()
+</P
+></LI
+><LI
+><P
+>&#13;cable_defer_set_trst()
+</P
+></LI
+><LI
+><P
+>&#13;cable_defer_get_trst()
+</P
+></LI
+><LI
+><P
+>&#13;cable_defer_transfer()
+</P
+></LI
+></UL
+><P
+>These functions aren't implemented in the cable driver (but currently in
+src/tap/cable.c).  The cable driver just has to provide a flush() function to
+actually execute the queued activity in some cable-specific optimal way, and
+to store the results of get_tdo() and transfer() activity. The caller later
+can pick up the results using these functions (implemented in cable.c):</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;cable_get_tdo_late()
+</P
+></LI
+><LI
+><P
+>&#13;cable_get_trst_late()
+</P
+></LI
+><LI
+><P
+>&#13;cable_transfer_late()
+</P
+></LI
+></UL
+><P
+>As an example, consider the following sequence of activities:</P
+><P
+></P
+><OL
+TYPE="1"
+><LI
+><P
+>&#13;clock()
+</P
+></LI
+><LI
+><P
+>&#13;get_tdo()
+</P
+></LI
+><LI
+><P
+>&#13;clock()
+</P
+></LI
+><LI
+><P
+>&#13;get_tdo()
+</P
+></LI
+></OL
+><P
+>If the result of the first get_tdo() isn't absolutely required before the
+second clock(), the sequence can be optimized into the following sequence (if</P
+><P
+></P
+><OL
+TYPE="1"
+><LI
+><P
+>&#13;defer_clock()
+</P
+></LI
+><LI
+><P
+>&#13;defer_clock()
+</P
+></LI
+><LI
+><P
+>&#13;flush()
+</P
+></LI
+><LI
+><P
+>&#13;get_tdo_late()
+</P
+></LI
+><LI
+><P
+>&#13;get_tdo_late()
+</P
+></LI
+></OL
+><P
+>The next sections explain the queueing mechanism and its limits in detail.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_when_flushing_occurs"
+>4.2.1.4. When flushing occurs</A
+></H3
+><P
+>The cable_flush() function is used to flush the queue towards the cable. It
+takes one additional argument, "how_much", which may be one of</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;OPTIONALLY: The cable driver may flush if it's reasonable (e.g. if the
+   queue has been filled so that some buffer limit for the cable interface
+   is reached). It would be wise to flush early to keep the queue small, if
+   there is no point in queueing up more items because the transfer to the
+   cable would have to be split into smaller chunks anyway. This is used by
+   UrJTAG immediately after adding items to the queue.
+</P
+></LI
+><LI
+><P
+>&#13;TO_OUTPUT: The cable driver should at least flush as much so that one
+   output becomes available in the output queue. If there's already something
+   in the output queue, this should be interpreted similar to OPTIONALLY. This
+   is used by UrJTAG immediately before it wants to use that output.
+</P
+></LI
+><LI
+><P
+>&#13;COMPLETELY: The cable driver has to flush the queue completely. This is
+   used by UrJTAG immediately before actions that circumvent the queueing
+   such as calls to the legacy clock/get_tdo functions. It could also be
+   used by application code to ensure that some action is actually done in
+   time.
+</P
+></LI
+></UL
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_jtag_activity_queueing"
+>4.2.1.5. JTAG activity queueing</A
+></H3
+><P
+>The source in src/tap/cable.c provides to important functions to access the
+two queues "todo" (with activity to be done) and "done" (with results):</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;cable_add_queue_item
+</P
+></LI
+><LI
+><P
+>&#13;cable_get_queue_item
+</P
+></LI
+></UL
+><P
+>In src/tap/cable/generic.c you'll find two implementations of dequeueing
+algorithms, i.e. implementations of the flush() function. These could be used
+by any new cable driver unless it provides a more sophisticated algorithm
+itself:</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;generic_flush_one_by_one() simply calls the "classic" functions one after
+   another. The performance of the cable driver using this implementation will
+   be the same whether the immediate or defer variants of the functions are used.
+</P
+></LI
+><LI
+><P
+>&#13;generic_flush_using_transfer() tries to optimize as many clock() and
+   get_tdo() by transforming them into calls to transfer() instead. This can
+   give a slight advantage.
+</P
+></LI
+></UL
+><P
+>The generic implementations also serve as a template for new cable-specific
+implementations.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_generic_implementations"
+>4.2.1.6. Generic implementations</A
+></H3
+><P
+>As a reference and in many cases completely sufficient for new cables, take a
+look at the code in src/tap/cable/generic.c, which contains generic routines,
+suitable for parallel port based cables (and some for other types of cables as
+well).</P
+></DIV
+></DIV
+><DIV
+CLASS="section"
+><H2
+CLASS="section"
+><A
+NAME="_link_drivers"
+>4.2.2. Link drivers</A
+></H2
+><P
+>Link drivers like the "parport" driver collection provide the basis for
+communication between cable driver and actual JTAG adapter. The openwince JTAG
+tools supported only parallel port links with the "parport" drivers. UrJTAG
+introduced support for USB links, but in the early releases the drivers for
+these just mimic the parallel port links.</P
+><P
+>The basic functions provided by all link drivers are</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;connect(), to called from cable driver connect()
+</P
+></LI
+><LI
+><P
+>&#13;open(), to actually connect to the device during cable driver init()
+</P
+></LI
+><LI
+><P
+>&#13;close(), to disconnect from the device during cable driver done()
+</P
+></LI
+><LI
+><P
+>&#13;free(), to free all resources, called from cable driver free()
+</P
+></LI
+></UL
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_parport"
+>4.2.2.1. parport</A
+></H3
+><P
+>Currently there are parport drivers for direct access to the parallel port on a
+PC using I/O addresses (direct.c), and for using ppdev on Linux or ppi on FreeBSD.</P
+><P
+>In addition, there are "ftdi" and "ftd2xx" parport drivers that actually are for
+communication with USB cables based on FTDI chips. They cannot be used for
+connecting old parallel port cables through parallel to USB adapters with FTDI
+chips, and probably soon will be rewritten as "usbconn" drivers instead.</P
+><P
+>All parport drivers present a common API for setting and reading signals.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_usbconn"
+>4.2.2.2. usbconn</A
+></H3
+><P
+>The usbconn drivers provide a common API to search for and connect with USB
+devices. At the moment, there are drivers for libusd, libftdi and FTD2XX
+(e.g. to communicate with FTDI chip based cables through libftdi and/or
+FTD2XX, to communicate with Cypress FX2 using EZUSB.SYS or CyUSB.sys, and
+more).</P
+></DIV
+></DIV
+><DIV
+CLASS="section"
+><H2
+CLASS="section"
+><A
+NAME="_bus_drivers"
+>4.2.3. Bus drivers</A
+></H2
+><P
+>Bus drivers translate read and write operations on a bus into JTAG commands
+and methods. A bus in this context is neither restricted to a processor bus,
+nor to memory. Any system component that can be read from and written to could
+be seen as attached to a bus. I.e. external or internal memory (RAM, ROM,
+Flash) and peripherals connected to a processor or simply an FPGA with 1:1
+connections.</P
+><P
+>The available bus drivers are listed in response to "help initbus". Each
+driver has to provide the following functions:</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;bus_new() - Initialization
+</P
+></LI
+><LI
+><P
+>&#13;bus_free() - Cleaning up
+</P
+></LI
+><LI
+><P
+>&#13;bus_printinfo() - Short description
+</P
+></LI
+><LI
+><P
+>&#13;bus_prepare() - Preparation
+</P
+></LI
+><LI
+><P
+>&#13;bus_area() - Description of the bus geometry
+</P
+></LI
+><LI
+><P
+>&#13;bus_read_start() - Initiate reading
+</P
+></LI
+><LI
+><P
+>&#13;bus_read_next() - Read access
+</P
+></LI
+><LI
+><P
+>&#13;bus_read_end() - Finish reading
+</P
+></LI
+><LI
+><P
+>&#13;bus_read() - Atomic reading
+</P
+></LI
+><LI
+><P
+>&#13;bus_write() - Write access
+</P
+></LI
+></UL
+><DIV
+CLASS="important"
+><P
+></P
+><TABLE
+CLASS="important"
+WIDTH="100%"
+BORDER="0"
+><TR
+><TD
+WIDTH="25"
+ALIGN="CENTER"
+VALIGN="TOP"
+><IMG
+SRC="../images/important.gif"
+HSPACE="5"
+ALT="Important"></TD
+><TD
+ALIGN="LEFT"
+VALIGN="TOP"
+><P
+>Address parameters to the functions listed above specify always
+byte locations, independent of the actual data width. The bus driver has to
+adjust the address on its own if required.</P
+></TD
+></TR
+></TABLE
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_creation"
+>4.2.3.1. Creation</A
+></H3
+><P
+>Upon calling of its bus_new() function, the driver allocates a "bus_t"
+structure and performs all required internal initializations.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_initialization_2"
+>4.2.3.2. Initialization</A
+></H3
+><P
+>After creation of the new "bus_t" structure, the bus_init() function will
+be called to give the driver the possibility to initialize it's internal
+states or BSR bits as required. Such functionality has been split from
+bus_new() since some drivers require to re-initialize during runtime.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_cleaning_up_2"
+>4.2.3.3. Cleaning up</A
+></H3
+><P
+>The driver is supposed to free all allocated memory (including its "bus_t"
+structure). Additionally, it should set the device into a state that doesn't
+prevent it from normal operation.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_short_description"
+>4.2.3.4. Short description</A
+></H3
+><P
+>Prints a message describing the driver. This function is called by the "print"
+command before it lists the areas covered by this bus driver.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_preparation"
+>4.2.3.5. Preparation</A
+></H3
+><P
+>This function is called whenever a bus operation is initiated. The
+driver should perform the required preparation steps so that
+subsequent calls to the bus_read_* and bus_write functions can perform
+their tasks properly.</P
+><P
+>E.g. a BSR bus driver would put the device into EXTEST mode to activate the
+boundary scan register on the device pins.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_description_of_the_bus_geometry"
+>4.2.3.6. Description of the bus geometry</A
+></H3
+><P
+>At certain stages, the bus driver's bus_area() function is called by other
+commands to query the bus geometry for a given address. The bus driver must
+fill in the fields of a "bus_area_t" structure describing the geometry of the
+area in which the specified address is located:</P
+><P
+></P
+><UL
+><LI
+><P
+>&#13;a short textual description of the area
+</P
+></LI
+><LI
+><P
+>&#13;start address of area
+</P
+></LI
+><LI
+><P
+>&#13;length of area in bytes
+</P
+></LI
+><LI
+><P
+>&#13;data width in bits
+</P
+></LI
+></UL
+><P
+>Queries with an address out of range must result in an area length of</P
+><PRE
+CLASS="literallayout"
+>UINT64_C(0x100000000)</PRE
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_initiate_reading"
+>4.2.3.7. Initiate reading</A
+></H3
+><P
+>Since the JTAG state machine defines a capture-shift-update sequence, it is
+required to shift the address for a read prior to capturing the read
+data. Therefore, the bus_read_start() function is called with the very first
+address to read from. This enables the driver to shift the address into the
+device before it can actually retrieve the read data for this address.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_read_access"
+>4.2.3.8. Read access</A
+></H3
+><P
+>The bus_read_next() function fetches the read data from the device that has
+been addressed by a previous call to bus_read_start() or
+bus_read_next(). Again, this is due to the capture-shift-update sequence of
+JTAG:</P
+><P
+></P
+><OL
+TYPE="1"
+><LI
+><P
+>&#13;capture read data from device pins
+</P
+></LI
+><LI
+><P
+>&#13;shift new address
+</P
+></LI
+><LI
+><P
+>&#13;update new address to device pins
+</P
+></LI
+></OL
+><DIV
+CLASS="important"
+><P
+></P
+><TABLE
+CLASS="important"
+WIDTH="100%"
+BORDER="0"
+><TR
+><TD
+WIDTH="25"
+ALIGN="CENTER"
+VALIGN="TOP"
+><IMG
+SRC="../images/important.gif"
+HSPACE="5"
+ALT="Important"></TD
+><TD
+ALIGN="LEFT"
+VALIGN="TOP"
+><P
+>The address parameter specifies the location of the <SPAN
+CLASS="emphasis"
+><I
+CLASS="emphasis"
+>following</I
+></SPAN
+>
+read access. It is not the address of the data returned by this function call.</P
+></TD
+></TR
+></TABLE
+></DIV
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_finish_reading"
+>4.2.3.9. Finish reading</A
+></H3
+><P
+>Function "bus_read_end()" is called at the end of a read sequence. I.e. when
+the higher level command determines that the last data portion is to be read
+from the device. There is no new address and the function driver is supposed
+to return the read data that was addressed previously.</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_atomic_reading"
+>4.2.3.10. Atomic reading</A
+></H3
+><P
+>For ease of use, a bus driver has to supply a "bus_read()" function that
+encapsulates reading data from a single address in an atomic operation. Bus
+drivers typically build this function from "bus_read_start()" and a subsequent
+"bus_read_end()".</P
+></DIV
+><DIV
+CLASS="section"
+><H3
+CLASS="section"
+><A
+NAME="_write_access"
+>4.2.3.11. Write access</A
+></H3
+><P
+>This function writes one data element at the specified address. Since this
+translates to a single JTAG operation (capture ignored, shift and update
+address &#38; data), there is no splitting as with the read functions.</P
+></DIV
+></DIV
+></DIV
+><DIV
+CLASS="NAVFOOTER"
+><HR
+ALIGN="LEFT"
+WIDTH="100%"><TABLE
+SUMMARY="Footer navigation table"
+WIDTH="100%"
+BORDER="0"
+CELLPADDING="0"
+CELLSPACING="0"
+><TR
+><TD
+WIDTH="33%"
+ALIGN="left"
+VALIGN="top"
+><A
+HREF="_internals.html"
+ACCESSKEY="P"
+>Prev</A
+></TD
+><TD
+WIDTH="34%"
+ALIGN="center"
+VALIGN="top"
+><A
+HREF="index.html"
+ACCESSKEY="H"
+>Home</A
+></TD
+><TD
+WIDTH="33%"
+ALIGN="right"
+VALIGN="top"
+><A
+HREF="_data_file_format.html"
+ACCESSKEY="N"
+>Next</A
+></TD
+></TR
+><TR
+><TD
+WIDTH="33%"
+ALIGN="left"
+VALIGN="top"
+>Internals</TD
+><TD
+WIDTH="34%"
+ALIGN="center"
+VALIGN="top"
+><A
+HREF="_internals.html"
+ACCESSKEY="U"
+>Up</A
+></TD
+><TD
+WIDTH="33%"
+ALIGN="right"
+VALIGN="top"
+>Data file format</TD
+></TR
+></TABLE
+></DIV
+></BODY
+></HTML
+>
