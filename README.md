@@ -1,1 +1,1 @@
-# urjtag_arduiggler
+Arduiggler: Arduino based JTAG cable with UrJTAG
